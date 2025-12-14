@@ -25,6 +25,12 @@ export function activate(context: vscode.ExtensionContext) {
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: "scl" }],
     outputChannel: vscode.window.createOutputChannel("SCL Language Server"),
+    // Optimize initialization
+    initializationOptions: {},
+    // Only sync open/change/save events for better performance
+    synchronize: {
+      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.scl")
+    }
   };
 
   client = new LanguageClient(
@@ -34,6 +40,9 @@ export function activate(context: vscode.ExtensionContext) {
     clientOptions
   );
 
+  // Start the client asynchronously to avoid blocking activation
+  context.subscriptions.push(client);
+  
   client.start().then(
     () => {
       console.log("Language Client successfully started.");
@@ -50,9 +59,3 @@ export function activate(context: vscode.ExtensionContext) {
 export function deactivate(): Thenable<void> | undefined {
   return client?.stop();
 }
-(err: any) => {
-  console.error("Language Client failed to start", err);
-  vscode.window.showErrorMessage(
-    "SCL Language Server failed to start: " + err.message
-  );
-};

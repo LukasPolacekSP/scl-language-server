@@ -2,23 +2,18 @@ import re
 from lsprotocol.types import Diagnostic, DiagnosticSeverity, Range, Position
 from pygls.workspace import Document
 from pygls.server import LanguageServer
-from parser_structured import StructuredSCLParser
-from syntax_keywords import SCL_KEYWORDS
-
-# Initialize parser instance
-parser = StructuredSCLParser()
-
-
-def update_parser(doc):
-    parser.parse(doc.source)
+from parser_singleton import get_parser, update_parser
+from syntax_keywords import SCL_KEYWORDS, DATA_TYPE_KEYWORDS
 
 
 def run_diagnostics(ls: LanguageServer, doc: Document):
     update_parser(doc)
+    parser = get_parser()
     diagnostics = []
 
     lines = doc.lines
     declared_vars = set(parser.variables.keys())
+    ls.show_message_log(f"Diagnostics: Found {len(declared_vars)} declared variables: {declared_vars}")
     diagnostics += check_assignments(lines, declared_vars)
     diagnostics += check_if_blocks(lines)
     diagnostics += check_variable_prefix_collisions(lines)
@@ -32,50 +27,14 @@ def is_literal(value: str) -> bool:
         re.match(r"^\d+(\.\d+)?$", value)
         or value.upper() in SCL_KEYWORDS
         or value.upper().startswith("T#")
+        or re.match(r"^\d+(\.\d+)?(ms|s|m|h|d)$", value, re.IGNORECASE)
     )
 
 
 def is_var_defined(varname: str) -> bool:
     # Use parser.all_nodes for variable existence
+    parser = get_parser()
     return varname in parser.all_nodes
-
-
-def preprocess_function_block_info(lines: list[str]):
-    """Precompute function block names and all function call argument names."""
-    fb_names = set()
-    in_var_block = False
-    var_decl_pattern = re.compile(r"^\s*([\w.]+)\s*:\s*([\w.]+)\s*;")
-    const_decl_pattern = re.compile(r"^\s*([\w.]+)\s*:=\s*([\w]+)#([^;]+)\s*;")
-    call_pattern = re.compile(r"\b([\w.]+)\s*\(([^)]*)\)")
-    fb_arg_names = set()
-    for line in lines:
-        upper = line.strip().upper()
-        if upper.startswith("VAR") or upper.startswith("CONST"):
-            in_var_block = True
-            continue
-        if upper.startswith("END_VAR") or upper.startswith("END_CONST"):
-            in_var_block = False
-            continue
-        if in_var_block:
-            match = var_decl_pattern.match(line.split("//")[0])
-            if match:
-                var_name, var_type = match.groups()
-                if var_type.upper() not in SCL_KEYWORDS:
-                    fb_names.add(var_name)
-            # Also match constant definitions
-            const_match = const_decl_pattern.match(line.split("//")[0])
-            if const_match:
-                const_name, const_type, const_value = const_match.groups()
-                fb_names.add(const_name)
-        # Function call argument names (IN, PT, etc.)
-        for call_match in call_pattern.finditer(line):
-            arglist = call_match.group(2)
-            for arg in arglist.split(","):
-                arg = arg.strip()
-                if ":=" in arg:
-                    arg_name = arg.split(":=")[0].strip()
-                    fb_arg_names.add(arg_name)
-    return fb_names, fb_arg_names
 
 
 def extract_variables(text: str) -> list[str]:
@@ -163,17 +122,46 @@ def check_variable_prefix_collisions(lines: list[str]) -> list[Diagnostic]:
 
 def check_assignments(lines: list[str], declared_vars: set[str]) -> list[Diagnostic]:
     diagnostics = []
-    fb_names, fb_arg_names = preprocess_function_block_info(lines)
     in_code_block = False
     logical_ops = ("AND", "OR", "XOR", "NOT")
     # Join all code lines into a single string for multiline context
     multiline_code = "\n".join(line.split("//")[0].rstrip() for line in lines)
+    
+    # Track which lines are inside function call parentheses to skip them
+    lines_in_function_calls = set()
+    
     for i, line in enumerate(lines):
         stripped = line.strip().upper()
         if stripped == "BEGIN":
             in_code_block = True
             continue
         if not in_code_block:
+            continue
+            
+        # First pass: identify lines inside function calls
+        code = line.split("//")[0].rstrip()
+        # Check if this line starts a function call (has opening parenthesis)
+        if "(" in code and ":=" in code:
+            open_parens = code.count("(") - code.count(")")
+            if open_parens > 0:
+                # Mark subsequent lines until closing parenthesis
+                for k in range(i + 1, len(lines)):
+                    next_line = lines[k].split("//")[0].rstrip()
+                    open_parens += next_line.count("(") - next_line.count(")")
+                    lines_in_function_calls.add(k)
+                    if open_parens <= 0:
+                        break
+    
+    for i, line in enumerate(lines):
+        stripped = line.strip().upper()
+        if stripped == "BEGIN":
+            in_code_block = True
+            continue
+        if not in_code_block:
+            continue
+        
+        # Skip lines that are inside function call parentheses
+        if i in lines_in_function_calls:
             continue
 
         code = line.split("//")[0].rstrip()
@@ -184,13 +172,32 @@ def check_assignments(lines: list[str], declared_vars: set[str]) -> list[Diagnos
         lhs, rhs = match.groups()
 
         for var in extract_variables(lhs) + extract_variables(rhs):
+            # Skip if it's a function argument (check if parent is a function block call)
+            parser = get_parser()
+            var_node = parser.all_nodes.get(var)
+            if var_node and var_node.var_type == "fb_argument":
+                continue
+            
+            # Skip function return variables (e.g., "function.var")
+            if "." in var:
+                # Check if the part before the dot is a function block call
+                parts = var.split(".")
+                base_var = parts[0]
+                base_node = parser.all_nodes.get(base_var)
+                if base_node and base_node.var_type == "function_block_call":
+                    continue
+                # For structs, check if the full path exists in all_nodes
+                # If base is defined, only skip if the full path is also defined
+                if (base_var in declared_vars or is_var_defined(base_var)):
+                    if is_var_defined(var):
+                        # Full path exists, skip checking
+                        continue
+                    # If base exists but full path doesn't, fall through to report error
+                
             if (
                 not is_literal(var)
                 and not is_var_defined(var)
                 and var not in declared_vars
-                and var not in fb_names
-                and not any(var.startswith(fb + ".") for fb in fb_names)
-                and var not in fb_arg_names
             ):
                 diagnostics.append(Diagnostic(
                     range=Range(
@@ -203,36 +210,26 @@ def check_assignments(lines: list[str], declared_vars: set[str]) -> list[Diagnos
                 ))
 
         # Check for missing semicolon, but allow line continuation with logical operators
-        # For function calls, require semicolon only after the closing parenthesis of the call
+        # For assignments with parentheses, require semicolon only after the closing parenthesis
         if not code.endswith(";"):
-            # Check if we are inside an unclosed parenthesis (e.g., multiline function call)
-            open_parens = 0
-            for ch in code:
-                if ch == "(":
-                    open_parens += 1
-                elif ch == ")":
-                    open_parens -= 1
-            # Look ahead for closing parenthesis and semicolon
+            # Count open/closed parentheses in the entire line
+            open_parens = code.count("(") - code.count(")")
+            
+            # If we have unclosed parentheses, scan ahead to find the closing line
             if open_parens > 0:
-                # Scan following lines to find the closing parenthesis and check for semicolon
-                found_close = False
                 for k in range(i + 1, len(lines)):
                     next_line = lines[k].split("//")[0].rstrip()
-                    for ch in next_line:
-                        if ch == "(":
-                            open_parens += 1
-                        elif ch == ")":
-                            open_parens -= 1
+                    open_parens += next_line.count("(") - next_line.count(")")
+                    
                     if open_parens <= 0:
-                        found_close = True
-                        # After closing parenthesis, require semicolon at end of line
-                        if not next_line.rstrip().endswith(";"):
+                        # Found the closing line - check for semicolon there
+                        if not next_line.endswith(";"):
                             diagnostics.append(Diagnostic(
                                 range=Range(
                                     start=Position(line=k, character=len(next_line)),
                                     end=Position(line=k, character=len(next_line) + 1)
                                 ),
-                                message="Missing semicolon ';' after function call.",
+                                message="Missing semicolon ';'",
                                 severity=DiagnosticSeverity.Error,
                                 source="scl-ls"
                             ))

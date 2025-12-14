@@ -5,10 +5,10 @@ block_cipher = None
 
 a = Analysis(
     ['server/scl_server/main.py'],
-    pathex=[],
+    pathex=['server/scl_server'],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=['parser_structured', 'handlers', 'diagnostics', 'syntax_keywords'],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],

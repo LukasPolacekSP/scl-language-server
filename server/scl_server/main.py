@@ -40,9 +40,8 @@ def did_open(ls, params: DidOpenTextDocumentParams):
 @server.feature(TEXT_DOCUMENT_DID_CHANGE)
 def did_change(ls, params: DidChangeTextDocumentParams):
     doc = ls.workspace.get_text_document(params.text_document.uri)
+    ls.show_message_log(f"Document changed, running diagnostics on {len(doc.lines)} lines")
     run_diagnostics(ls, doc)
 
 if __name__ == "__main__":
-    import time
-    time.sleep(10)
     server.start_io()

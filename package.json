@@ -2,7 +2,7 @@
   "name": "scl-language-support",
   "displayName": "scl-language-support",
   "description": "Language support for Siemens SCL using Python language server",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "repository": {
     "type": "git",
     "url": "https://github.com/Slickuss/scl-language-server.git"
@@ -13,7 +13,7 @@
     "vscode": "^1.100.0"
   },
   "categories": [
-    "Other"
+    "Programming Languages"
   ],
   "main": "./dist/extension.js",
   "contributes": {

@@ -17,13 +17,7 @@ from lsprotocol.types import (
 from pygls.server import LanguageServer
 from pygls.workspace import Document
 
-from parser_structured import StructuredSCLParser
-
-# Initialize parser instance
-parser = StructuredSCLParser()
-
-def update_parser(doc):
-    parser.parse(doc.source)
+from parser_singleton import get_parser, update_parser
 
 def find_hover_token_with_segment(line: str, char: int) -> tuple[str, int] | None:
     if char > len(line):
@@ -69,6 +63,7 @@ def handle_hover(ls: LanguageServer, params: HoverParams) -> Hover | None:
     target_path = path[:segment_index + 1]
     full_path_str = ".".join(target_path)
 
+    parser = get_parser()
     node = parser.all_nodes.get(full_path_str)
     if not node:
         return None
@@ -109,6 +104,7 @@ def handle_completion(ls: LanguageServer, params: CompletionParams) -> list[Comp
     path = path_parts[:-1]
     parent_path_str = ".".join(path) if path else None
 
+    parser = get_parser()
     if parent_path_str:
         parent_node = parser.all_nodes.get(parent_path_str)
         candidates = list(parent_node.children.keys()) if parent_node and parent_node.children else []
