@@ -6,6 +6,21 @@ VAR_BLOCKS = {
     "VAR_INPUT", "VAR_OUTPUT", "VAR_IN_OUT", "VAR", "VAR_TEMP", "CONST",
 }
 
+# Singleton parser instance
+_parser_instance = None
+
+def get_parser():
+    """Get or create the singleton parser instance."""
+    global _parser_instance
+    if _parser_instance is None:
+        _parser_instance = StructuredSCLParser()
+    return _parser_instance
+
+def update_parser(doc):
+    """Update parser with new document content."""
+    parser = get_parser()
+    parser.parse(doc.source)
+
 class VariableNode:
     def __init__(self, name, var_type, data_type, parent=None, default=None, comment=None, block_type=None):
         self.name = name

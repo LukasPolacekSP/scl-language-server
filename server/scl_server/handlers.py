@@ -17,7 +17,7 @@ from lsprotocol.types import (
 from pygls.server import LanguageServer
 from pygls.workspace import Document
 
-from parser_singleton import get_parser, update_parser
+from parser_structured import get_parser, update_parser
 
 def find_hover_token_with_segment(line: str, char: int) -> tuple[str, int] | None:
     if char > len(line):

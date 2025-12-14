@@ -2,7 +2,7 @@ import re
 from lsprotocol.types import Diagnostic, DiagnosticSeverity, Range, Position
 from pygls.workspace import Document
 from pygls.server import LanguageServer
-from parser_singleton import get_parser, update_parser
+from parser_structured import get_parser, update_parser
 from syntax_keywords import SCL_KEYWORDS, DATA_TYPE_KEYWORDS
 
 
@@ -328,24 +328,13 @@ def check_if_blocks(lines: list[str]) -> list[Diagnostic]:
 
 
 def is_empty_else_block(lines: list[str], start_index: int) -> bool:
+    """Check if ELSE block is empty (contains no statements before END_IF)."""
     for j in range(start_index + 1, len(lines)):
         line = lines[j].split("//")[0].strip()
         if not line:
             continue
         if ";" in line:
             return False
-        if line.strip().upper().startswith("END_IF"):
-            return True
-    return False
-
-
-def is_empty_else_block(lines: list[str], start_index: int) -> bool:
-    for j in range(start_index + 1, len(lines)):
-        line = lines[j].split("//")[0].strip()
-        if not line:
-            continue
-        if ";" in line:
-            return False
-        if line.strip().upper().startswith("END_IF"):
+        if line.upper().startswith("END_IF"):
             return True
     return False
