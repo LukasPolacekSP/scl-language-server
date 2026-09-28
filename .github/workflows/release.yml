@@ -34,20 +34,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
 
+      # uv's standalone Python instead of actions/setup-python: on macOS the
+      # latter is a framework build, which PyInstaller bundles as a symlinked
+      # Python.framework that crashes vsce's secret scanner.
       - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
+          uv venv --python 3.12 --python-preference only-managed .venv
+          uv pip install -r requirements.txt -r requirements-dev.txt "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
 
       - name: Run server tests
-        run: pytest -q
+        run: uv run --no-project pytest -q
 
       - name: Build server binary with PyInstaller
-        run: pyinstaller scl_server.spec
+        run: uv run --no-project pyinstaller scl_server.spec
 
       - name: Verify server binary was produced
         run: test -f "dist/SCLserver/${{ matrix.binary }}"
