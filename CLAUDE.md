@@ -89,11 +89,11 @@ Releases are built and published entirely by `.github/workflows/release.yml`. To
 1. Bump `version` in `package.json` and add a matching section to `CHANGELOG.md`.
 2. Push a tag matching `vX.Y.Z` (e.g. `git tag v0.0.4 && git push origin v0.0.4`), or trigger the workflow manually via `workflow_dispatch`.
 3. CI then, per platform (`windows-latest` → `win32-x64`, `macos-latest` → `darwin-arm64`, `ubuntu-latest` → `linux-x64`): runs the server test suite, builds the server binary with PyInstaller (`pyinstaller scl_server.spec` from the repo root), and packages a platform-specific VSIX with `vsce package --target <target>`.
-4. On a tag push (not `workflow_dispatch`), a `publish` job downloads all three VSIXs and publishes them to the Visual Studio Marketplace (`vsce publish --packagePath *.vsix`), optionally to Open VSX if configured, and attaches the VSIXs to a GitHub Release.
+4. On a tag push (not `workflow_dispatch`), a `publish` job downloads all three VSIXs and attaches them to a GitHub Release and publishes them to the Visual Studio Marketplace and Open VSX when the matching secrets are set.
 
-Required repository secrets:
-- `VSCE_PAT` — a Visual Studio Marketplace Personal Access Token for the `slickuss` publisher. Required for the Marketplace publish step.
-- `OVSX_PAT` (optional) — an Open VSX access token. If unset, the Open VSX publish step is skipped (`if: env.OVSX_PAT != ''`).
+Optional repository secrets (each publish step is skipped when its secret is unset):
+- `VSCE_PAT` — a Visual Studio Marketplace Personal Access Token for the `Slickus` publisher. Creating one requires an Azure DevOps organization linked to an Azure subscription, so it is currently **not set**: the Marketplace release is done by hand — download the VSIX from the GitHub Release and upload it at https://marketplace.visualstudio.com/manage (extension ⋯ menu → Update).
+- `OVSX_PAT` — an Open VSX access token.
 
 To package a VSIX manually for a single platform (e.g. to test locally), build the matching server binary first, then:
 ```bash
