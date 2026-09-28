@@ -1,10 +1,19 @@
 import re
-from collections import defaultdict
 from syntax_keywords import DECLARATION_KEYWORDS, DATA_TYPE_KEYWORDS, END_DECLARATION_KEYWORDS
+from scl_text import strip_comment, extract_comment, find_paren_close, STRUCT_START_RE, STRUCT_END_RE
 
-VAR_BLOCKS = {
-    "VAR_INPUT", "VAR_OUTPUT", "VAR_IN_OUT", "VAR", "VAR_TEMP", "CONST",
+BLOCK_TO_VAR_TYPE = {
+    "VAR_INPUT": "input",
+    "VAR_OUTPUT": "output",
+    "VAR_IN_OUT": "inout",
+    "VAR": "static",
+    "VAR_TEMP": "temporary",
+    "CONST": "constant",
 }
+
+CONST_DECL_RE = re.compile(r"(?i)(\w+)\s*:=\s*([\w]+)#([^;]+)\s*;")
+VAR_DECL_RE = re.compile(r"(?i)(\w+)\s*:\s*([\w.]+)(?:\s*:=\s*([^;]+))?\s*;")
+CALL_START_RE = re.compile(r"(?i)(\w+)\s*\(\s*")
 
 # Singleton parser instance
 _parser_instance = None
@@ -35,71 +44,74 @@ class VariableNode:
     def add_child(self, child):
         self.children[child.name] = child
 
-    def to_dict(self):
-        return {
-            "name": self.name,
-            "var_type": self.var_type,
-            "data_type": self.data_type,
-            "parent": self.parent.name if self.parent else None,
-            "children": list(self.children.keys()),
-            "default": self.default,
-            "comment": self.comment,
-            "block_type": self.block_type,
-        }
-
 class StructuredSCLParser:
     def __init__(self):
         self.variables = {}  # name -> VariableNode
         self.all_nodes = {}  # all VariableNodes by full path
+        self._last_source = None
 
     def parse(self, text: str):
+        if text == self._last_source:
+            return
+        self._last_source = text
+
         self.variables = {}
         self.all_nodes = {}
         lines = text.splitlines()
-        block_type = None
+        code_lines = [strip_comment(line) for line in lines]
         parent_stack = []
+
+        body_start = self._parse_declarations(lines, parent_stack)
+        self._parse_body(lines, code_lines, body_start, parent_stack)
+
+    def _parse_declarations(self, lines: list[str], parent_stack: list) -> int:
+        """Parse the VAR/VAR_INPUT/.../CONST declaration section.
+
+        Returns the index of the first line after BEGIN, or len(lines) if
+        BEGIN was never found (in which case there is no body to parse).
+        """
+        block_type = None
         current_parent = None
-        declarative_part = True
         i = 0
         while i < len(lines):
-            line = lines[i]
-            stripped = line.strip()
+            stripped = lines[i].strip()
             upper = stripped.upper()
-            if declarative_part:
-                if upper.startswith("BEGIN"):
-                    declarative_part = False
-                    fb_names = self._get_function_block_names()
-                    i += 1
-                    continue
-                # Sekvence zpracování
-                block_type = self._handle_block_start_end(upper, block_type)
-                if block_type is None:
-                    i += 1
-                    continue
+            if upper.startswith("BEGIN"):
+                return i + 1
 
-                if self._handle_structure_start(stripped, block_type, parent_stack, current_parent):
-                    current_parent = self._get_parent_node(parent_stack)
-                    i += 1
-                    continue
+            block_type = self._handle_block_start_end(upper, block_type)
+            if block_type is None:
+                i += 1
+                continue
 
-                if self._handle_structure_end(stripped, parent_stack):
-                    current_parent = self._get_parent_node(parent_stack)
-                    i += 1
-                    continue
+            if self._handle_structure_start(stripped, block_type, parent_stack, current_parent):
+                current_parent = self._get_parent_node(parent_stack)
+                i += 1
+                continue
 
-                if self._handle_constant_definition(stripped, block_type, parent_stack, current_parent):
-                    i += 1
-                    continue
+            if self._handle_structure_end(stripped, parent_stack):
+                current_parent = self._get_parent_node(parent_stack)
+                i += 1
+                continue
 
-                if self._handle_variable_declaration(stripped, block_type, parent_stack, current_parent):
-                    i += 1
-                    continue
-            else:
-                consumed_lines = self._handle_function_block_call(lines, i, parent_stack)
-                if consumed_lines > 0:
-                    i += consumed_lines
-                    continue
+            if self._handle_constant_definition(stripped, block_type, parent_stack, current_parent):
+                i += 1
+                continue
+
+            if self._handle_variable_declaration(stripped, block_type, parent_stack, current_parent):
+                i += 1
+                continue
+
             i += 1
+        return len(lines)
+
+    def _parse_body(self, lines: list[str], code_lines: list[str], start: int, parent_stack: list):
+        """Parse the executable section (after BEGIN), registering function
+        block call arguments so they aren't flagged as undefined variables."""
+        i = start
+        while i < len(lines):
+            consumed_lines = self._handle_function_block_call(lines, code_lines, i, parent_stack)
+            i += consumed_lines if consumed_lines > 0 else 1
 
     def _handle_block_start_end(self, upper: str, block_type: str) -> str:
         if upper in DECLARATION_KEYWORDS:
@@ -108,8 +120,17 @@ class StructuredSCLParser:
             return None
         return block_type
 
+    def _register(self, node: VariableNode, parent_stack: list, current_parent: VariableNode):
+        """Attach node to its parent (or the top-level variables), and index
+        it in all_nodes under its full dotted path."""
+        if current_parent:
+            current_parent.add_child(node)
+        else:
+            self.variables[node.name] = node
+        self.all_nodes[self._full_path(parent_stack, node.name)] = node
+
     def _handle_structure_start(self, line: str, block_type: str, parent_stack: list, current_parent: VariableNode) -> bool:
-        match = re.match(r"(?i)(\w+)\s*:\s*STRUCT\b", line)
+        match = STRUCT_START_RE.match(line)
         if match:
             name = match.group(1)
             node = VariableNode(
@@ -117,27 +138,23 @@ class StructuredSCLParser:
                 var_type=self._block_to_vartype(block_type),
                 data_type="STRUCT",
                 parent=current_parent,
-                comment=self._extract_comment(line),
+                comment=extract_comment(line),
                 block_type=block_type
             )
-            if current_parent:
-                current_parent.add_child(node)
-            else:
-                self.variables[name] = node
-            self.all_nodes[self._full_path(parent_stack, name)] = node
+            self._register(node, parent_stack, current_parent)
             parent_stack.append(name)
             return True
         return False
-    
+
     def _handle_structure_end(self, line: str, parent_stack: list) -> bool:
-        if re.match(r"(?i)END_STRUCT\s*;", line):
+        if STRUCT_END_RE.match(line):
             if parent_stack:
                 parent_stack.pop()
             return True
         return False
-    
+
     def _handle_constant_definition(self, line: str, block_type: str, parent_stack: list, current_parent: VariableNode) -> bool:
-        match = re.match(r"(?i)(\w+)\s*:=\s*([\w]+)#([^;]+)\s*;", line)
+        match = CONST_DECL_RE.match(line)
         if match and block_type == "CONST":
             name, data_type, value = match.groups()
             node = VariableNode(
@@ -146,19 +163,15 @@ class StructuredSCLParser:
                 data_type=data_type,
                 parent=current_parent,
                 default=value.strip(),
-                comment=self._extract_comment(line),
+                comment=extract_comment(line),
                 block_type=block_type
             )
-            if current_parent:
-                current_parent.add_child(node)
-            else:
-                self.variables[name] = node
-            self.all_nodes[self._full_path(parent_stack, name)] = node
+            self._register(node, parent_stack, current_parent)
             return True
         return False
-    
+
     def _handle_variable_declaration(self, line: str, block_type: str, parent_stack: list, current_parent: VariableNode) -> bool:
-        match = re.match(r"(?i)(\w+)\s*:\s*([\w.]+)(?:\s*:=\s*([^;]+))?\s*;", line)
+        match = VAR_DECL_RE.match(line)
         if match:
             name, data_type, default = match.groups()
             node = VariableNode(
@@ -167,27 +180,23 @@ class StructuredSCLParser:
                 data_type=data_type,
                 parent=current_parent,
                 default=default.strip() if default else None,
-                comment=self._extract_comment(line),
+                comment=extract_comment(line),
                 block_type=block_type
             )
-            if current_parent:
-                current_parent.add_child(node)
-            else:
-                self.variables[name] = node
-            self.all_nodes[self._full_path(parent_stack, name)] = node
+            self._register(node, parent_stack, current_parent)
             return True
         return False
-    
-    def _handle_function_block_call(self, lines: list, start_idx: int, parent_stack: list):
+
+    def _handle_function_block_call(self, lines: list, code_lines: list, start_idx: int, parent_stack: list):
         """
         Handle function block calls that may span multiple lines.
         Returns the number of lines consumed (0 if not a function call).
         """
         line = lines[start_idx].strip()
-        match = re.match(r"(?i)(\w+)\s*\(\s*", line)
+        match = CALL_START_RE.match(line)
         if not match:
             return 0
-            
+
         func_name = match.group(1)
         if func_name.upper() in DATA_TYPE_KEYWORDS:
             return 0  # Ignore type conversions like INT(), BOOL(), etc.
@@ -198,21 +207,16 @@ class StructuredSCLParser:
             var_type="function_block_call",
             data_type=None,
             parent=None,
-            comment=self._extract_comment(line),
+            comment=extract_comment(line),
             block_type=None
         )
         self.all_nodes[self._full_path(parent_stack, func_name)] = node
 
         # Collect all lines until closing parenthesis
-        full_call = line
-        open_parens = line.count("(") - line.count(")")
-        lines_consumed = 1
-        
-        while open_parens > 0 and start_idx + lines_consumed < len(lines):
-            next_line = lines[start_idx + lines_consumed].split("//")[0].strip()
-            full_call += " " + next_line
-            open_parens += next_line.count("(") - next_line.count(")")
-            lines_consumed += 1
+        close = find_paren_close(code_lines, start_idx)
+        end_idx = close if close is not None else len(lines) - 1
+        full_call = " ".join(code_lines[k].strip() for k in range(start_idx, end_idx + 1))
+        lines_consumed = end_idx - start_idx + 1
 
         # Extract all arguments from the complete function call
         # Match patterns like: argName := value or argName:=value
@@ -234,29 +238,8 @@ class StructuredSCLParser:
 
         return lines_consumed
 
-    def _get_function_block_names(self) -> dict[str, VariableNode]:
-        return {
-            name: node
-            for name, node in self.variables.items()
-            if node.data_type not in DATA_TYPE_KEYWORDS
-        }
-
-
-
     def _block_to_vartype(self, block_type):
-        if block_type == "VAR_INPUT":
-            return "input"
-        if block_type == "VAR_OUTPUT":
-            return "output"
-        if block_type == "VAR_IN_OUT":
-            return "inout"
-        if block_type == "VAR":
-            return "static"
-        if block_type == "VAR_TEMP":
-            return "temporary"
-        if block_type == "CONST":
-            return "constant"
-        return "normal"
+        return BLOCK_TO_VAR_TYPE.get(block_type, "normal")
 
     def _full_path(self, parent_stack, name):
         return ".".join(parent_stack + [name]) if parent_stack else name
@@ -266,24 +249,3 @@ class StructuredSCLParser:
             return None
         path = ".".join(parent_stack)
         return self.all_nodes.get(path)
-
-    def _extract_comment(self, line: str) -> str:
-        comment_index = line.find("//")
-        if comment_index != -1:
-            return line[comment_index + 2:].strip()
-        return ""
-
-    def get_variable(self, name: str) -> dict | None:
-        node = self.all_nodes.get(name)
-        return node.to_dict() if node else None
-
-    def get_all_variables(self):
-        return {name: node.to_dict() for name, node in self.all_nodes.items()}
-
-    def get_children(self, name: str):
-        node = self.all_nodes.get(name)
-        if node:
-            return [child.to_dict() for child in node.children.values()]
-        return []
-
-    

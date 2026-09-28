@@ -32,16 +32,17 @@ def hover(ls: LanguageServer, params: HoverParams) -> Optional[Hover]:
 def highlight(ls: LanguageServer, params: DocumentHighlightParams) -> list[DocumentHighlight]:
     return handle_highlight(ls, params)
 
+def _lint(ls, uri: str):
+    doc = ls.workspace.get_text_document(uri)
+    run_diagnostics(ls, doc)
+
 @server.feature(TEXT_DOCUMENT_DID_OPEN)
 def did_open(ls, params: DidOpenTextDocumentParams):
-    doc = ls.workspace.get_text_document(params.text_document.uri)
-    run_diagnostics(ls, doc)
+    _lint(ls, params.text_document.uri)
 
 @server.feature(TEXT_DOCUMENT_DID_CHANGE)
 def did_change(ls, params: DidChangeTextDocumentParams):
-    doc = ls.workspace.get_text_document(params.text_document.uri)
-    ls.show_message_log(f"Document changed, running diagnostics on {len(doc.lines)} lines")
-    run_diagnostics(ls, doc)
+    _lint(ls, params.text_document.uri)
 
 if __name__ == "__main__":
     server.start_io()

@@ -11,13 +11,12 @@ from lsprotocol.types import (
     DocumentHighlightKind,
     Range,
     Position,
-    Diagnostic, 
-    DiagnosticSeverity
 )
 from pygls.server import LanguageServer
-from pygls.workspace import Document
 
 from parser_structured import get_parser, update_parser
+
+BRACKET_PAIRS = {'(': ')', ')': '(', '{': '}', '}': '{', '[': ']', ']': '['}
 
 def find_hover_token_with_segment(line: str, char: int) -> tuple[str, int] | None:
     if char > len(line):
@@ -48,7 +47,7 @@ def find_hover_token_with_segment(line: str, char: int) -> tuple[str, int] | Non
     return token, seg_index
 
 def handle_hover(ls: LanguageServer, params: HoverParams) -> Hover | None:
-    doc = ls.workspace.get_document(params.text_document.uri)
+    doc = ls.workspace.get_text_document(params.text_document.uri)
     update_parser(doc)
 
     line = doc.lines[params.position.line]
@@ -90,7 +89,7 @@ def handle_hover(ls: LanguageServer, params: HoverParams) -> Hover | None:
     return Hover(contents=MarkupContent(kind=MarkupKind.PlainText, value=result))
 
 def handle_completion(ls: LanguageServer, params: CompletionParams) -> list[CompletionItem]:
-    doc = ls.workspace.get_document(params.text_document.uri)
+    doc = ls.workspace.get_text_document(params.text_document.uri)
     update_parser(doc)
 
     line = doc.lines[params.position.line][:params.position.character]
@@ -114,8 +113,34 @@ def handle_completion(ls: LanguageServer, params: CompletionParams) -> list[Comp
     filtered = [c for c in candidates if c.startswith(prefix)]
     return [CompletionItem(label=s) for s in filtered]
 
+def _find_matching_bracket(lines: list[str], pos: Position, step: int) -> Position | None:
+    """Scan from pos in the given direction (step=+1 forward, step=-1
+    backward) tracking bracket depth, and return the Position of the
+    matching bracket, or None if it isn't found."""
+    start_char = lines[pos.line][pos.character]
+    target_char = BRACKET_PAIRS[start_char]
+    stack = 1
+
+    l = pos.line
+    while 0 <= l < len(lines):
+        line_text = lines[l]
+        if l == pos.line:
+            char_range = range(pos.character + step, len(line_text) if step > 0 else -1, step)
+        else:
+            char_range = range(0, len(line_text)) if step > 0 else range(len(line_text) - 1, -1, -1)
+        for c in char_range:
+            ch = line_text[c]
+            if ch == start_char:
+                stack += 1
+            elif ch == target_char:
+                stack -= 1
+                if stack == 0:
+                    return Position(line=l, character=c)
+        l += step
+    return None
+
 def handle_highlight(ls: LanguageServer, params: DocumentHighlightParams) -> list[DocumentHighlight]:
-    doc = ls.workspace.get_document(params.text_document.uri)
+    doc = ls.workspace.get_text_document(params.text_document.uri)
     lines = doc.lines
     pos = params.position
 
@@ -127,40 +152,10 @@ def handle_highlight(ls: LanguageServer, params: DocumentHighlightParams) -> lis
         return []
 
     char = line[pos.character]
-    pairs = {'(': ')', ')': '(', '{': '}', '}': '{', '[': ']', ']': '['}
-    openers = '([{'
-    closers = ')]}'
-
-    def find_match(lines, line_idx, char_idx, open_br, close_br, forward=True):
-        stack = 1
-        if forward:
-            for l in range(line_idx, len(lines)):
-                line_text = lines[l]
-                r = range(char_idx + 1, len(line_text)) if l == line_idx else range(len(line_text))
-                for c in r:
-                    if line_text[c] == open_br:
-                        stack += 1
-                    elif line_text[c] == close_br:
-                        stack -= 1
-                        if stack == 0:
-                            return Position(line=l, character=c)
-        else:
-            for l in range(line_idx, -1, -1):
-                line_text = lines[l]
-                r = range(char_idx - 1, -1, -1) if l == line_idx else range(len(line_text) - 1, -1, -1)
-                for c in r:
-                    if line_text[c] == close_br:
-                        stack += 1
-                    elif line_text[c] == open_br:
-                        stack -= 1
-                        if stack == 0:
-                            return Position(line=l, character=c)
-        return None
-
-    if char in openers:
-        match = find_match(lines, pos.line, pos.character, char, pairs[char], forward=True)
-    elif char in closers:
-        match = find_match(lines, pos.line, pos.character, pairs[char], char, forward=False)
+    if char in '([{':
+        match = _find_matching_bracket(lines, pos, step=1)
+    elif char in ')]}':
+        match = _find_matching_bracket(lines, pos, step=-1)
     else:
         return []
 
@@ -176,4 +171,3 @@ def handle_highlight(ls: LanguageServer, params: DocumentHighlightParams) -> lis
             ),
         ]
     return []
-

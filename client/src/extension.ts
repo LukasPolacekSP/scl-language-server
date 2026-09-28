@@ -10,10 +10,8 @@ let client: LanguageClient;
 
 export function activate(context: vscode.ExtensionContext) {
   // Always use production mode in packaged extension
-  let serverOptions: ServerOptions;
-
   console.log("Starting SCL server in PRODUCTION mode");
-  serverOptions = {
+  const serverOptions: ServerOptions = {
     command: context.asAbsolutePath(
       path.join("dist", "SCLserver", "server.exe")
     ),
@@ -27,10 +25,6 @@ export function activate(context: vscode.ExtensionContext) {
     outputChannel: vscode.window.createOutputChannel("SCL Language Server"),
     // Optimize initialization
     initializationOptions: {},
-    // Only sync open/change/save events for better performance
-    synchronize: {
-      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.scl")
-    }
   };
 
   client = new LanguageClient(

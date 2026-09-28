@@ -31,7 +31,7 @@ python main.py                          # run the LSP server directly over stdio
 python -m PyInstaller ../../scl_server.spec   # build the standalone server.exe used by the extension
 ```
 
-The PyInstaller spec (`scl_server.spec`) builds from `server/scl_server/main.py` and explicitly lists the server's own modules (`parser_structured`, `handlers`, `diagnostics`, `syntax_keywords`) as `hiddenimports` — if you add a new server module, add it there too or PyInstaller will silently omit it from the frozen build.
+The PyInstaller spec (`scl_server.spec`) builds from `server/scl_server/main.py` and explicitly lists the server's own modules (`parser_structured`, `handlers`, `diagnostics`, `syntax_keywords`, `scl_text`) as `hiddenimports` — if you add a new server module, add it there too or PyInstaller will silently omit it from the frozen build.
 
 Packaging the extension for distribution:
 ```bash
@@ -77,3 +77,7 @@ Because parsing is regex/line-based rather than a proper tokenizer, most bugs in
 ### Keyword tables
 
 `syntax_keywords.py` centralizes all SCL keyword sets (control flow, data types, declaration keywords, etc.) into a unified `SCL_KEYWORDS` set. Both the parser and diagnostics import from here — add new keywords in one place.
+
+### Shared lexical helpers
+
+`scl_text.py` centralizes small text-handling helpers used by both `parser_structured.py` and `diagnostics.py`: `strip_comment`/`extract_comment` for `//` comments, `find_paren_close` for tracking multiline paren depth (the one implementation shared by the parser's function-block-call handling and diagnostics' unclosed-call/missing-semicolon checks), and the `STRUCT_START_RE`/`STRUCT_END_RE` regexes both modules match `STRUCT`/`END_STRUCT` lines against.
