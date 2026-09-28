@@ -81,3 +81,24 @@ Because parsing is regex/line-based rather than a proper tokenizer, most bugs in
 ### Shared lexical helpers
 
 `scl_text.py` centralizes small text-handling helpers used by both `parser_structured.py` and `diagnostics.py`: `strip_comment`/`extract_comment` for `//` comments, `find_paren_close` for tracking multiline paren depth (the one implementation shared by the parser's function-block-call handling and diagnostics' unclosed-call/missing-semicolon checks), and the `STRUCT_START_RE`/`STRUCT_END_RE` regexes both modules match `STRUCT`/`END_STRUCT` lines against.
+
+## Publishing
+
+Releases are built and published entirely by `.github/workflows/release.yml`. To cut a release:
+
+1. Bump `version` in `package.json` and add a matching section to `CHANGELOG.md`.
+2. Push a tag matching `vX.Y.Z` (e.g. `git tag v0.0.4 && git push origin v0.0.4`), or trigger the workflow manually via `workflow_dispatch`.
+3. CI then, per platform (`windows-latest` → `win32-x64`, `macos-latest` → `darwin-arm64`, `ubuntu-latest` → `linux-x64`): runs the server test suite, builds the server binary with PyInstaller (`pyinstaller scl_server.spec` from the repo root), and packages a platform-specific VSIX with `vsce package --target <target>`.
+4. On a tag push (not `workflow_dispatch`), a `publish` job downloads all three VSIXs and publishes them to the Visual Studio Marketplace (`vsce publish --packagePath *.vsix`), optionally to Open VSX if configured, and attaches the VSIXs to a GitHub Release.
+
+Required repository secrets:
+- `VSCE_PAT` — a Visual Studio Marketplace Personal Access Token for the `slickuss` publisher. Required for the Marketplace publish step.
+- `OVSX_PAT` (optional) — an Open VSX access token. If unset, the Open VSX publish step is skipped (`if: env.OVSX_PAT != ''`).
+
+To package a VSIX manually for a single platform (e.g. to test locally), build the matching server binary first, then:
+```bash
+python -m PyInstaller scl_server.spec   # from repo root; produces dist/SCLserver/
+npx @vscode/vsce package --target win32-x64   # or darwin-arm64 / linux-x64 / etc.
+```
+
+`npm run vsce:package` runs a plain `vsce package` (no `--target`) against whatever is currently in `dist/SCLserver/`, useful for a quick local sanity check of the current platform's build.

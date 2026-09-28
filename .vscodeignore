@@ -1,14 +1,16 @@
-**/*.py
-**/__pycache__/**
-**/*.spec
-**/*.map
-**/.vscode/**
-**/.vscode-test/**
-node_modules/**
-out/**
-src/**
-*.log
-*.md
-*.yaml
-*.yaml
-!dist/**
+# Exclude everything by default, then re-include only what's needed at
+# runtime. vsce always includes package.json regardless of this file.
+**
+
+!README.md
+!CHANGELOG.md
+!LICENSE
+!language-configuration.json
+
+!dist/extension.js
+!dist/SCLserver/**
+
+!syntaxes/**
+!syntaxes/scl.tmLanguage.json
+
+!images/icon.png

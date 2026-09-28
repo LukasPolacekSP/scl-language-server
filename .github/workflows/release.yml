@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PYINSTALLER_VERSION: "6.11.1"
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win32-x64
+            binary: server.exe
+          - os: macos-latest
+            target: darwin-arm64
+            binary: server
+          - os: ubuntu-latest
+            target: linux-x64
+            binary: server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
+
+      - name: Run server tests
+        run: pytest -q
+
+      - name: Build server binary with PyInstaller
+        run: pyinstaller scl_server.spec
+
+      - name: Verify server binary was produced
+        run: test -f "dist/SCLserver/${{ matrix.binary }}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Package VSIX
+        run: npx @vscode/vsce package --target ${{ matrix.target }} -o scl-${{ matrix.target }}.vsix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.target }}
+          path: scl-${{ matrix.target }}.vsix
+
+  publish:
+    name: Publish
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vsix-*
+          merge-multiple: true
+          path: vsix
+
+      - name: Publish to Visual Studio Marketplace
+        run: npx @vscode/vsce publish --packagePath vsix/*.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
+        run: npx ovsx publish --packagePath vsix/*.vsix -p "$OVSX_PAT"
+
+      - name: Attach VSIXs to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: vsix/*.vsix

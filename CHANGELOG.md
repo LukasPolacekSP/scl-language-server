@@ -6,6 +6,21 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+### Added
+
+- `language-configuration.json` (comments, brackets, auto-closing/surrounding pairs, indentation rules, folding markers, and a `#`/dotted-name-aware `wordPattern`) - previously referenced by `package.json` but missing from the repo
+- Platform-specific packaging: `.github/workflows/release.yml` now builds and publishes per-platform VSIXs (`win32-x64`, `darwin-arm64`, `linux-x64`) on `v*` tags, and `.github/workflows/ci.yml` runs the server test suite and client build on every push/PR to `main`
+- `npm run vsce:package` script for quick local VSIX packaging
+- A `images/icon.png` extension icon and a matching `galleryBanner` color in `package.json`
+- A "Publishing" section in `CLAUDE.md` describing the release/tagging process and required secrets
+
+### Changed
+
+- Rewrote `README.md` as a proper Marketplace listing (features, supported platforms, known limitations, development/build instructions, release notes pointer)
+- `.vscodeignore` now excludes everything by default and re-includes only the runtime-needed files (`package.json`, `README.md`, `CHANGELOG.md`, `LICENSE`, `language-configuration.json`, `dist/extension.js`, `dist/SCLserver/**`, `syntaxes/**`, `images/icon.png`), so `.venv/`, `server/`, `client/src/`, PyInstaller's `build/`, and tests are no longer packaged into the VSIX
+- `package.json`: fixed `repository.url` to point at the actual git remote, added `bugs.url`/`homepage`, a proper `displayName`/`description`, a `keywords` array, and removed the invalid `contributes.capabilities` block
+- `client/src/extension.ts` now verifies the server binary exists before launching (showing a clear error message instead of failing silently) and, on non-Windows platforms, attempts to restore the executable bit (`chmodSync`) if VSIX extraction dropped it
+
 ### Fixed
 
 - `FOR i := 0 TO 10 DO` and other control-flow headers (`WHILE ... DO`, `CASE ... OF`, `ELSIF ... THEN`, ...) no longer produce a false "Missing semicolon" diagnostic just because they contain a `:=`

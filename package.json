@@ -1,14 +1,30 @@
 {
   "name": "scl-language-support",
-  "displayName": "scl-language-support",
-  "description": "Language support for Siemens SCL using Python language server",
+  "displayName": "SCL Language Support (Siemens)",
+  "description": "Language support for Siemens SCL (Structured Control Language, TIA Portal): syntax highlighting, diagnostics, hover, and completion. No Python installation required.",
   "version": "0.0.3",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#00897B",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Slickuss/scl-language-server.git"
+    "url": "https://github.com/LukasPolacekSP/scl-language-server.git"
   },
+  "bugs": {
+    "url": "https://github.com/LukasPolacekSP/scl-language-server/issues"
+  },
+  "homepage": "https://github.com/LukasPolacekSP/scl-language-server#readme",
   "publisher": "slickuss",
   "license": "MIT",
+  "keywords": [
+    "scl",
+    "siemens",
+    "tia portal",
+    "plc",
+    "structured control language"
+  ],
   "engines": {
     "vscode": "^1.100.0"
   },
@@ -36,17 +52,7 @@
         "scopeName": "source.scl",
         "path": "./syntaxes/scl.tmLanguage.json"
       }
-    ],
-    "capabilities": {
-      "textDocument": {
-        "hover": {
-          "dynamicRegistration": true
-        },
-        "documentHighlight": {
-          "dynamicRegistration": true
-        }
-      }
-    }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -60,7 +66,8 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint client/src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "vsce:package": "npx @vscode/vsce package"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -77,5 +84,8 @@
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
+  },
+  "allowScripts": {
+    "esbuild@0.25.5": true
   }
 }
