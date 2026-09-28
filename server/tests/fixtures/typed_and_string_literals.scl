@@ -1,0 +1,25 @@
+FUNCTION_BLOCK FB_Example
+VAR
+    bVal : BYTE;
+    iVal : INT;
+    dVal : DINT;
+    tVal : TIME;
+    rVal : REAL;
+    wVal : WORD;
+    oVal : BYTE;
+    sVal : STRING;
+    sVal2 : STRING;
+    fVal : REAL;
+END_VAR
+BEGIN
+bVal := 16#FF;
+iVal := 2#1010;
+dVal := DINT#-3;
+tVal := TIME#1h;
+rVal := REAL#1.5;
+wVal := W#16#FF;
+oVal := 8#17;
+sVal := 'hello world';
+sVal2 := "another one";
+fVal := 1.0E3;
+END_FUNCTION_BLOCK

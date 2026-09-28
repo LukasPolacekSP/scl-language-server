@@ -1,0 +1,10 @@
+FUNCTION_BLOCK FB_Example
+VAR
+    i : INT;
+    x : INT;
+END_VAR
+BEGIN
+FOR i := 0 TO 10 BY 2 DO
+    x := i;
+END_FOR;
+END_FUNCTION_BLOCK

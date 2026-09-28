@@ -50,7 +50,11 @@ def handle_hover(ls: LanguageServer, params: HoverParams) -> Hover | None:
     doc = ls.workspace.get_text_document(params.text_document.uri)
     update_parser(doc)
 
-    line = doc.lines[params.position.line]
+    lines = doc.lines
+    if params.position.line >= len(lines):
+        return None
+
+    line = lines[params.position.line]
     char = params.position.character
 
     token_info = find_hover_token_with_segment(line, char)
@@ -63,7 +67,7 @@ def handle_hover(ls: LanguageServer, params: HoverParams) -> Hover | None:
     full_path_str = ".".join(target_path)
 
     parser = get_parser()
-    node = parser.all_nodes.get(full_path_str)
+    node = parser.get_node_ci(full_path_str)
     if not node:
         return None
 
@@ -71,7 +75,7 @@ def handle_hover(ls: LanguageServer, params: HoverParams) -> Hover | None:
     comment_chain = []
     for i in range(len(target_path)):
         sub_path = ".".join(target_path[:i+1])
-        n = parser.all_nodes.get(sub_path)
+        n = parser.get_node_ci(sub_path)
         if n and n.comment:
             comment_chain.append(n.comment)
     comment_str = ", ".join(comment_chain) if comment_chain else ""
@@ -92,7 +96,11 @@ def handle_completion(ls: LanguageServer, params: CompletionParams) -> list[Comp
     doc = ls.workspace.get_text_document(params.text_document.uri)
     update_parser(doc)
 
-    line = doc.lines[params.position.line][:params.position.character]
+    lines = doc.lines
+    if params.position.line >= len(lines):
+        return []
+
+    line = lines[params.position.line][:params.position.character]
     match = re.search(r'([\w.]+)$', line)
     if not match:
         return []
@@ -105,7 +113,7 @@ def handle_completion(ls: LanguageServer, params: CompletionParams) -> list[Comp
 
     parser = get_parser()
     if parent_path_str:
-        parent_node = parser.all_nodes.get(parent_path_str)
+        parent_node = parser.get_node_ci(parent_path_str)
         candidates = list(parent_node.children.keys()) if parent_node and parent_node.children else []
     else:
         candidates = list(parser.variables.keys())

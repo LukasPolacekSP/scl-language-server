@@ -43,3 +43,26 @@ def find_paren_close(code_lines: list[str], start: int) -> int | None:
 # prefix-collision check need to recognize identically.
 STRUCT_START_RE = re.compile(r"(?i)(\w+)\s*:\s*STRUCT\b")
 STRUCT_END_RE = re.compile(r"(?i)END_STRUCT\s*;")
+
+
+def is_begin(line: str) -> bool:
+    """Return True if `line` is exactly the BEGIN keyword, once a trailing
+    `//` comment and surrounding whitespace are stripped, case-insensitively.
+
+    This is the one shared definition of "is this the BEGIN line" used by
+    the parser and every diagnostics check, so `BEGIN // comment` is always
+    recognized as BEGIN, and a declaration like `BeginTime : TIME;` is
+    never mistaken for it (unlike a plain `.upper().startswith("BEGIN")`
+    check, which matches both incorrectly).
+    """
+    return strip_comment(line).strip().upper() == "BEGIN"
+
+
+def find_body_start(lines: list[str]) -> int:
+    """Return the index of the first line after the BEGIN keyword line, or
+    len(lines) if BEGIN is never found. Uses `is_begin` so it agrees with
+    the parser's own declaration/body split."""
+    for i, line in enumerate(lines):
+        if is_begin(line):
+            return i + 1
+    return len(lines)

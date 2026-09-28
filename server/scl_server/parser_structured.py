@@ -1,6 +1,6 @@
 import re
-from syntax_keywords import DECLARATION_KEYWORDS, DATA_TYPE_KEYWORDS, END_DECLARATION_KEYWORDS
-from scl_text import strip_comment, extract_comment, find_paren_close, STRUCT_START_RE, STRUCT_END_RE
+from syntax_keywords import DECLARATION_KEYWORDS, DATA_TYPE_KEYWORDS, END_DECLARATION_KEYWORDS, SCL_KEYWORDS
+from scl_text import strip_comment, extract_comment, find_paren_close, is_begin, STRUCT_START_RE, STRUCT_END_RE
 
 BLOCK_TO_VAR_TYPE = {
     "VAR_INPUT": "input",
@@ -12,6 +12,7 @@ BLOCK_TO_VAR_TYPE = {
 }
 
 CONST_DECL_RE = re.compile(r"(?i)(\w+)\s*:=\s*([\w]+)#([^;]+)\s*;")
+PLAIN_CONST_DECL_RE = re.compile(r"(?i)(\w+)\s*:=\s*([^;]+)\s*;")
 VAR_DECL_RE = re.compile(r"(?i)(\w+)\s*:\s*([\w.]+)(?:\s*:=\s*([^;]+))?\s*;")
 CALL_START_RE = re.compile(r"(?i)(\w+)\s*\(\s*")
 
@@ -49,6 +50,7 @@ class StructuredSCLParser:
         self.variables = {}  # name -> VariableNode
         self.all_nodes = {}  # all VariableNodes by full path
         self._last_source = None
+        self._all_nodes_ci = None  # lowercased-key cache, built lazily; see get_node_ci
 
     def parse(self, text: str):
         if text == self._last_source:
@@ -57,12 +59,22 @@ class StructuredSCLParser:
 
         self.variables = {}
         self.all_nodes = {}
+        self._all_nodes_ci = None
         lines = text.splitlines()
         code_lines = [strip_comment(line) for line in lines]
         parent_stack = []
 
         body_start = self._parse_declarations(lines, parent_stack)
         self._parse_body(lines, code_lines, body_start, parent_stack)
+
+    def get_node_ci(self, path: str) -> "VariableNode | None":
+        """Case-insensitive lookup into all_nodes (SCL identifiers are
+        case-insensitive). The lowercased index is built once per parse and
+        cached here rather than changing all_nodes' own (case-preserving)
+        keys."""
+        if self._all_nodes_ci is None:
+            self._all_nodes_ci = {key.lower(): node for key, node in self.all_nodes.items()}
+        return self._all_nodes_ci.get(path.lower())
 
     def _parse_declarations(self, lines: list[str], parent_stack: list) -> int:
         """Parse the VAR/VAR_INPUT/.../CONST declaration section.
@@ -76,7 +88,7 @@ class StructuredSCLParser:
         while i < len(lines):
             stripped = lines[i].strip()
             upper = stripped.upper()
-            if upper.startswith("BEGIN"):
+            if is_begin(lines[i]):
                 return i + 1
 
             block_type = self._handle_block_start_end(upper, block_type)
@@ -154,8 +166,11 @@ class StructuredSCLParser:
         return False
 
     def _handle_constant_definition(self, line: str, block_type: str, parent_stack: list, current_parent: VariableNode) -> bool:
+        if block_type != "CONST":
+            return False
+
         match = CONST_DECL_RE.match(line)
-        if match and block_type == "CONST":
+        if match:
             name, data_type, value = match.groups()
             node = VariableNode(
                 name=name,
@@ -168,6 +183,24 @@ class StructuredSCLParser:
             )
             self._register(node, parent_stack, current_parent)
             return True
+
+        # Plain (untyped) constants, e.g. `MAX_LEN := 10;`, as opposed to
+        # the typed form `MAX_SPEED := INT#100;` matched above.
+        match = PLAIN_CONST_DECL_RE.match(line)
+        if match:
+            name, value = match.groups()
+            node = VariableNode(
+                name=name,
+                var_type="constant",
+                data_type=None,
+                parent=current_parent,
+                default=value.strip(),
+                comment=extract_comment(line),
+                block_type=block_type
+            )
+            self._register(node, parent_stack, current_parent)
+            return True
+
         return False
 
     def _handle_variable_declaration(self, line: str, block_type: str, parent_stack: list, current_parent: VariableNode) -> bool:
@@ -198,8 +231,11 @@ class StructuredSCLParser:
             return 0
 
         func_name = match.group(1)
-        if func_name.upper() in DATA_TYPE_KEYWORDS:
-            return 0  # Ignore type conversions like INT(), BOOL(), etc.
+        if func_name.upper() in SCL_KEYWORDS:
+            # Ignore type conversions like INT(), BOOL(), etc., and control
+            # structures like IF(...), WHILE(...), NOT(...), ELSIF(...),
+            # CASE(...) - none of these are function block calls.
+            return 0
 
         # Create function block node
         node = VariableNode(
@@ -233,8 +269,6 @@ class StructuredSCLParser:
             )
             node.add_child(arg_node)
             self.all_nodes[self._full_path(parent_stack, f"{func_name}.{arg}")] = arg_node
-            # Also add the argument by itself so it can be recognized
-            self.all_nodes[arg] = arg_node
 
         return lines_consumed
 

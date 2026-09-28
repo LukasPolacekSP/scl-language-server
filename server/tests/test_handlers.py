@@ -150,6 +150,67 @@ def test_handle_completion_filters_by_prefix_after_dot(fake_ls):
     assert [item.label for item in items] == ["iSpeed"]
 
 
+def test_handle_hover_on_control_flow_keyword_returns_none(fake_ls):
+    # Regression test for bug 5: `IF (x > 0) THEN` was matched by the
+    # parser's function-block-call detection (a word immediately followed
+    # by '('), registering "IF" as a function_block_call node. Hovering
+    # over it should resolve to nothing, the same as any other keyword.
+    source = (
+        "VAR\n"
+        "    x : INT;\n"
+        "END_VAR\n"
+        "BEGIN\n"
+        "IF (x > 0) THEN\n"
+        "    x := 1;\n"
+        "END_IF;\n"
+        "END_FUNCTION_BLOCK\n"
+    )
+    doc = fake_ls.workspace.add(FakeDocument(source))
+    line_idx = _line_index(source, "IF (x > 0) THEN")
+    char = source.splitlines()[line_idx].index("IF") + 1
+
+    hover = handle_hover(fake_ls, _Params(doc.uri, line_idx, char))
+    assert hover is None
+
+
+def test_handle_hover_resolves_differently_cased_name(fake_ls):
+    # Regression test for bug 8: SCL identifiers are case-insensitive, so
+    # hovering over a differently-cased reference to a declared variable
+    # should still resolve.
+    source = "VAR\n    Counter : INT;\nEND_VAR\nBEGIN\ncounter := 1;\nEND_FUNCTION_BLOCK\n"
+    doc = fake_ls.workspace.add(FakeDocument(source))
+    line_idx = _line_index(source, "counter := 1;")
+    char = source.splitlines()[line_idx].index("counter") + 1
+
+    hover = handle_hover(fake_ls, _Params(doc.uri, line_idx, char))
+    assert hover is not None
+    assert "Type: INT" in hover.contents.value
+
+
+def test_handle_hover_on_line_past_end_of_document_returns_none(fake_ls):
+    # Regression test for bug 7: doc.lines[position.line] raised IndexError
+    # when the cursor sits on the final, blank line past the end of the
+    # document's text (a common editor position when the source ends with
+    # a trailing newline).
+    source = "VAR\n    x : INT;\nEND_VAR\nBEGIN\nx := 1;\nEND_FUNCTION_BLOCK\n"
+    doc = fake_ls.workspace.add(FakeDocument(source))
+    past_end_line = len(doc.lines)
+
+    hover = handle_hover(fake_ls, _Params(doc.uri, past_end_line, 0))
+    assert hover is None
+
+
+def test_handle_completion_on_line_past_end_of_document_returns_empty_list(fake_ls):
+    # Regression test for bug 7: same IndexError as handle_hover, but for
+    # handle_completion.
+    source = "VAR\n    x : INT;\nEND_VAR\nBEGIN\nx := 1;\nEND_FUNCTION_BLOCK\n"
+    doc = fake_ls.workspace.add(FakeDocument(source))
+    past_end_line = len(doc.lines)
+
+    items = handle_completion(fake_ls, _Params(doc.uri, past_end_line, 0))
+    assert items == []
+
+
 def test_handle_completion_filters_top_level_variables_by_prefix(fake_ls):
     base = load_fixture("nested_struct.scl")
     source = base + "\nMo\n"

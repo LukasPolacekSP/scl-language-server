@@ -1,0 +1,9 @@
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+    result : INT;
+END_VAR
+BEGIN
+myFB(IN := x);
+result := IN;
+END_FUNCTION_BLOCK

@@ -11,9 +11,10 @@ let client: LanguageClient;
 export function activate(context: vscode.ExtensionContext) {
   // Always use production mode in packaged extension
   console.log("Starting SCL server in PRODUCTION mode");
+  const serverBinary = process.platform === "win32" ? "server.exe" : "server";
   const serverOptions: ServerOptions = {
     command: context.asAbsolutePath(
-      path.join("dist", "SCLserver", "server.exe")
+      path.join("dist", "SCLserver", serverBinary)
     ),
     options: {
       cwd: context.asAbsolutePath(path.join("dist", "SCLserver")),

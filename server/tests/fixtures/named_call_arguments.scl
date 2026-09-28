@@ -1,0 +1,7 @@
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+END_VAR
+BEGIN
+myFB(IN := x, PT := T#5s);
+END_FUNCTION_BLOCK
