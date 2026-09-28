@@ -1,0 +1,13 @@
+FUNCTION_BLOCK FB_Example
+VAR
+    Motor : STRUCT
+        Status : STRUCT
+            bRunning : BOOL; // whether the motor is currently running
+        END_STRUCT;
+        iSpeed : INT := 100; // rated speed in RPM
+    END_STRUCT;
+END_VAR
+BEGIN
+Motor.Status.bRunning := TRUE;
+Motor.iSpeed := 200;
+END_FUNCTION_BLOCK

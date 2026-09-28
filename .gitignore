@@ -27,3 +27,7 @@ xref*
 # pycache
 __pycache__
 *.pyc
+
+# Python virtualenv / test cache
+.venv/
+.pytest_cache/

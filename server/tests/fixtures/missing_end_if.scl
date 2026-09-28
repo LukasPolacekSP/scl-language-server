@@ -1,0 +1,8 @@
+FUNCTION_BLOCK FB_Example
+VAR
+    bFlag : BOOL;
+END_VAR
+BEGIN
+IF bFlag THEN
+    bFlag := FALSE;
+END_FUNCTION_BLOCK

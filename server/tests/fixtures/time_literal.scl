@@ -1,0 +1,7 @@
+FUNCTION_BLOCK FB_Example
+VAR
+    tDelay : TIME;
+END_VAR
+BEGIN
+tDelay := T#5s;
+END_FUNCTION_BLOCK

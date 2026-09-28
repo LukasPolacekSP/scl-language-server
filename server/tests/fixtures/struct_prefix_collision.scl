@@ -1,0 +1,9 @@
+FUNCTION_BLOCK FB_Example
+VAR
+    MyStruct : STRUCT
+        LongMeasurementSensorValueApple : INT;
+        LongMeasurementSensorValueBanana : INT;
+    END_STRUCT;
+END_VAR
+BEGIN
+END_FUNCTION_BLOCK

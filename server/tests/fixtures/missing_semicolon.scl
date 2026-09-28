@@ -1,0 +1,7 @@
+FUNCTION_BLOCK FB_Example
+VAR
+    iValue : INT;
+END_VAR
+BEGIN
+iValue := 5
+END_FUNCTION_BLOCK
