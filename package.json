@@ -2,7 +2,7 @@
   "name": "scl-language-support",
   "displayName": "SCL Language Support (Siemens)",
   "description": "Language support for Siemens SCL (Structured Control Language, TIA Portal): syntax highlighting, diagnostics, hover, and completion. No Python installation required.",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "icon": "images/icon.png",
   "galleryBanner": {
     "color": "#00897B",

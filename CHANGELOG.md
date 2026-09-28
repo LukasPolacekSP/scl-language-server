@@ -4,7 +4,7 @@ All notable changes to the "scl-language-support" extension will be documented i
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
+## [0.1.0] - 2026-09-28
 
 ### Added
 
